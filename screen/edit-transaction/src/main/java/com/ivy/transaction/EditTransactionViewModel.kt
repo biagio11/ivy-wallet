@@ -14,21 +14,25 @@ import com.ivy.base.legacy.refreshWidget
 import com.ivy.base.model.TransactionType
 import com.ivy.data.db.dao.read.LoanDao
 import com.ivy.data.db.dao.read.SettingsDao
-import com.ivy.data.db.dao.write.WriteTransactionDao
 import com.ivy.data.model.Category
 import com.ivy.data.model.CategoryId
 import com.ivy.data.model.Tag
 import com.ivy.data.model.TagId
+import com.ivy.data.model.TransactionId
 import com.ivy.data.model.primitive.AssociationId
 import com.ivy.data.model.primitive.NotBlankTrimmedString
 import com.ivy.data.repository.CategoryRepository
 import com.ivy.data.repository.TagRepository
+import com.ivy.data.repository.TransactionRepository
 import com.ivy.data.repository.mapper.TagMapper
+import com.ivy.data.repository.mapper.TransactionMapper
+import com.ivy.domain.features.Features
 import com.ivy.legacy.data.EditTransactionDisplayLoan
 import com.ivy.legacy.datamodel.Account
-import com.ivy.legacy.datamodel.toEntity
+import com.ivy.legacy.datamodel.temp.toDomain
 import com.ivy.legacy.domain.deprecated.logic.AccountCreator
 import com.ivy.legacy.utils.computationThread
+import com.ivy.legacy.utils.convertUTCToLocal
 import com.ivy.legacy.utils.dateNowLocal
 import com.ivy.legacy.utils.getTrueDate
 import com.ivy.legacy.utils.ioThread
@@ -67,6 +71,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -97,9 +102,11 @@ class EditTransactionViewModel @Inject constructor(
     private val categoryRepository: CategoryRepository,
     private val trnByIdAct: TrnByIdAct,
     private val accountByIdAct: AccountByIdAct,
-    private val transactionWriter: WriteTransactionDao,
+    private val transactionRepo: TransactionRepository,
+    private val transactionMapper: TransactionMapper,
     private val tagRepository: TagRepository,
-    private val tagMapper: TagMapper
+    private val tagMapper: TagMapper,
+    private val features: Features
 ) : ComposeViewModel<EditTransactionState, EditTransactionEvent>() {
 
     private val transactionType = mutableStateOf(TransactionType.EXPENSE)
@@ -109,6 +116,7 @@ class EditTransactionViewModel @Inject constructor(
     private val description = mutableStateOf<String?>(null)
     private val dateTime = mutableStateOf<LocalDateTime?>(null)
     private val dueDate = mutableStateOf<LocalDateTime?>(null)
+    private val paidHistory = mutableStateOf<LocalDateTime?>(null)
     private val date = MutableStateFlow<LocalDate?>(null)
     private val time = MutableStateFlow<LocalTime?>(null)
     private val accounts = mutableStateOf<ImmutableList<Account>>(persistentListOf())
@@ -154,7 +162,7 @@ class EditTransactionViewModel @Inject constructor(
             }
             accounts.value = getAccounts
 
-            categories.value = categoryRepository.findAll().toImmutableList()
+            categories.value = sortCategories()
 
             reset()
 
@@ -369,6 +377,7 @@ class EditTransactionViewModel @Inject constructor(
         dateTime.value = transaction.dateTime
         description.value = transaction.description
         dueDate.value = transaction.dueDate
+        paidHistory.value = transaction.paidFor
         val selectedAccount = accountByIdAct(transaction.accountId)!!
         account.value = selectedAccount
         toAccount.value = transaction.toAccountId?.let {
@@ -547,7 +556,7 @@ class EditTransactionViewModel @Inject constructor(
 
     fun onSetTime(newTime: LocalTime) {
         loadedTransaction = loadedTransaction().copy(
-            time = newTime
+            time = newTime.convertUTCToLocal()
         )
         time.value = newTime
         onSetDateTime(
@@ -574,6 +583,7 @@ class EditTransactionViewModel @Inject constructor(
                 syncTransaction = false
             ) { paidTransaction ->
                 loadedTransaction = paidTransaction
+                paidHistory.value = paidTransaction.paidFor
                 dueDate.value = paidTransaction.dueDate
                 dateTime.value = paidTransaction.dateTime
 
@@ -588,7 +598,7 @@ class EditTransactionViewModel @Inject constructor(
         viewModelScope.launch {
             ioThread {
                 loadedTransaction?.let {
-                    transactionWriter.flagDeleted(it.id)
+                    transactionRepo.deleteById(TransactionId(it.id))
                 }
                 closeScreen()
             }
@@ -598,7 +608,7 @@ class EditTransactionViewModel @Inject constructor(
     private fun createCategory(data: CreateCategoryData) {
         viewModelScope.launch {
             categoryCreator.createCategory(data) {
-                categories.value = categoryRepository.findAll().toImmutableList()
+                categories.value = sortCategories()
 
                 // Select the newly created category
                 onCategoryChanged(it)
@@ -632,7 +642,7 @@ class EditTransactionViewModel @Inject constructor(
     private fun editCategory(updatedCategory: Category) {
         viewModelScope.launch {
             categoryCreator.editCategory(updatedCategory) {
-                categories.value = categoryRepository.findAll().toImmutableList()
+                categories.value = sortCategories()
             }
         }
     }
@@ -670,6 +680,7 @@ class EditTransactionViewModel @Inject constructor(
                     amount = amount,
                     type = transactionType.value,
                     dueDate = dueDate.value,
+                    paidFor = paidHistory.value,
                     dateTime = when {
                         loadedTransaction().dateTime == null &&
                                 dueDate.value == null -> {
@@ -698,7 +709,10 @@ class EditTransactionViewModel @Inject constructor(
                     accountsChanged = false
                 }
 
-                transactionWriter.save(loadedTransaction().toEntity())
+                loadedTransaction().toDomain(transactionMapper)?.let {
+                    transactionRepo.save(it)
+                }
+
                 refreshWidget(WalletBalanceWidgetReceiver::class.java)
             }
 
@@ -912,5 +926,18 @@ class EditTransactionViewModel @Inject constructor(
             tagRepository.save(newTag)
             tags.value = tagRepository.findAll().toImmutableList()
         }
+    }
+
+    private suspend fun sortCategories(): ImmutableList<Category> {
+        val categories = categoryRepository.findAll()
+        return if (shouldSortCategoriesAlphabetically()) {
+            categories.sortedBy { it.name.value }.toImmutableList()
+        } else {
+            categories.toImmutableList()
+        }
+    }
+
+    private suspend fun shouldSortCategoriesAlphabetically(): Boolean {
+        return features.sortCategoriesAlphabetically.enabled(context).firstOrNull() ?: false
     }
 }

@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.ivy.base.legacy.Theme
 import com.ivy.base.model.TransactionType
 import com.ivy.data.model.Category
 import com.ivy.data.model.Tag
@@ -37,6 +38,7 @@ import com.ivy.design.l0_system.Orange
 import com.ivy.design.l0_system.UI
 import com.ivy.design.l0_system.style
 import com.ivy.design.utils.hideKeyboard
+import com.ivy.legacy.IvyWalletPreview
 import com.ivy.legacy.data.EditTransactionDisplayLoan
 import com.ivy.legacy.datamodel.Account
 import com.ivy.legacy.ivyWalletCtx
@@ -46,7 +48,6 @@ import com.ivy.legacy.ui.component.tags.AddTagButton
 import com.ivy.legacy.ui.component.tags.ShowTagModal
 import com.ivy.legacy.utils.convertUTCtoLocal
 import com.ivy.legacy.utils.onScreenStart
-import com.ivy.legacy.utils.timeNowLocal
 import com.ivy.navigation.EditPlannedScreen
 import com.ivy.navigation.EditTransactionScreen
 import com.ivy.navigation.IvyPreview
@@ -57,7 +58,7 @@ import com.ivy.wallet.domain.data.CustomExchangeRateState
 import com.ivy.wallet.domain.deprecated.logic.model.CreateAccountData
 import com.ivy.wallet.domain.deprecated.logic.model.CreateCategoryData
 import com.ivy.wallet.ui.edit.core.Category
-import com.ivy.wallet.ui.edit.core.Description
+import com.ivy.legacy.ui.component.edit.core.Description
 import com.ivy.wallet.ui.edit.core.DueDate
 import com.ivy.wallet.ui.edit.core.EditBottomSheet
 import com.ivy.wallet.ui.edit.core.Title
@@ -645,11 +646,14 @@ private fun shouldFocusTitle(
 
 private fun shouldFocusAmount(amount: Double) = amount == 0.0
 
+/** For Preview purpose **/
+private val testDateTime = LocalDateTime.of(2023, 4, 27, 0, 35)
+
 @ExperimentalFoundationApi
 @Preview
 @Composable
-private fun BoxWithConstraintsScope.Preview() {
-    IvyPreview {
+private fun BoxWithConstraintsScope.Preview(isDark: Boolean = false) {
+    IvyPreview(isDark) {
         UI(
             screen = EditTransactionScreen(null, TransactionType.EXPENSE),
             initialTitle = "",
@@ -657,7 +661,7 @@ private fun BoxWithConstraintsScope.Preview() {
             tags = persistentListOf(),
             transactionAssociatedTags = persistentListOf(),
             baseCurrency = "BGN",
-            dateTime = timeNowLocal(),
+            dateTime = testDateTime,
             description = null,
             category = null,
             account = Account(name = "phyre", Orange.toArgb()),
@@ -689,5 +693,18 @@ private fun BoxWithConstraintsScope.Preview() {
             onSetTime = {},
             onSetTransactionType = {}
         )
+    }
+}
+
+/** For screenshot testing */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun EditTransactionScreenUiTest(isDark: Boolean) {
+    val theme = when (isDark) {
+        true -> Theme.DARK
+        false -> Theme.LIGHT
+    }
+    IvyWalletPreview(theme) {
+        Preview(isDark)
     }
 }
