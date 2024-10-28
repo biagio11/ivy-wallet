@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.toArgb
 import arrow.core.raise.either
 import com.ivy.base.legacy.Transaction
 import com.ivy.base.model.TransactionType
+import com.ivy.base.time.TimeConverter
 import com.ivy.data.backup.CSVRow
 import com.ivy.data.backup.ImportResult
 import com.ivy.data.db.dao.read.AccountDao
@@ -35,7 +36,6 @@ import com.opencsv.validators.RowValidator
 import kotlinx.collections.immutable.persistentListOf
 import timber.log.Timber
 import java.io.StringReader
-import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -52,6 +52,7 @@ class CSVImporter @Inject constructor(
     private val transactionMapper: TransactionMapper,
     private val accountRepository: AccountRepository,
     private val currencyRepository: CurrencyRepository,
+    private val timeConverter: TimeConverter,
 ) {
 
     lateinit var accounts: List<LegacyAccount>
@@ -244,8 +245,8 @@ class CSVImporter @Inject constructor(
                 accountId = account.id,
                 toAccountId = toAccount?.id,
                 toAmount = toAmount?.toBigDecimal() ?: amount.toBigDecimal(),
-                dateTime = dateTime,
-                dueDate = dueDate,
+                dateTime = with(timeConverter) { dateTime?.toUTC() },
+                dueDate = with(timeConverter) { dueDate?.toUTC() },
                 categoryId = category?.id?.value,
                 title = title,
                 description = description
@@ -526,8 +527,6 @@ class CSVImporter @Inject constructor(
                 icon = icon?.let(IconAsset::from)?.getOrNull(),
                 orderNum = orderNum ?: categoryRepository.findMaxOrderNum().nextOrderNum(),
                 id = CategoryId(UUID.randomUUID()),
-                lastUpdated = Instant.EPOCH,
-                removed = false,
             )
         }.getOrNull()
 

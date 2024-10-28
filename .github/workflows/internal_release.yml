@@ -2,20 +2,27 @@ name: Internal Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 jobs:
-  internal_release:
+  google_play_release:
+    if: |
+      contains(github.event.head_commit.message, 'Automatic release')
     runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
 
     steps:
       - name: Checkout GIT
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 #Fetch all history for all branches and tags
+
+      - name: Verify Commit Author
+        id: verify_author
+        run: |
+          AUTHOR=$(git log -1 --pretty=format:'%an')
+          if [ "$AUTHOR" != "github-actions[bot]" ]; then
+            echo "Commit not authored by github-actions[bot], exiting."
+            exit 1
+          fi
 
       - name: Setup Java SDK
         uses: actions/setup-java@v4
@@ -32,27 +39,10 @@ jobs:
         run: bundle install
       #----------------------------------------------------
 
-      #Security
-      - name: Validate Gradle Wrapper checksum
-        uses: gradle/wrapper-validation-action@v3
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Make Gradle Wrapper (gradlew) executable
-        run: chmod +x gradlew
-      #----------------------------------------------------
-
-      #Optimization
-      - name: Enable Gradle Wrapper caching (optimization)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-      #---------------------------------------------------
-
-      #Decode Secrets for production build
+      # Decode Secrets for production build
       - name: Create JKS for prod signing
         run: |
           echo "$SIGNING_KEYSTORE_JKS" > sign.jks.b64
@@ -68,16 +58,6 @@ jobs:
           PLAY_CONFIG_JSON: ${{ secrets.GOOGLE_PLAY_CONSOLE_JSON }}
       #--------------------------------------------------------------------------------
 
-      - name: Verify that the code is release-able ("lintRelease")
-        run: ./gradlew lintRelease
-
-      - name: Upload Lint Release report to GitHub
-        uses: actions/upload-artifact@v4
-        with:
-          name: lint-release-report.html
-          path: app/build/reports/lint-results-release.html
-
-      #Fastlane: Build production .aab and release it to Internal Testing
       - name: Build production App Bundle
         run: bundle exec fastlane production_build
         env:
@@ -91,52 +71,40 @@ jobs:
           name: app-release.aab
           path: app/build/outputs/bundle/release/app-release.aab
 
-      - name: Release App Bundle to Internal Testing
+      - name: Release App Bundle to Google PlayStore Internal Testing
         run: bundle exec fastlane internal_release
         env:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
-      #--------------------------------------------------------------------------
 
-      #Create GitHub release
-      # Bullrich/generate-release-changelog@master doesn't run on macos-latest
-      - name: Prepare changelog for GitHub Release
-        uses: Bullrich/generate-release-changelog@master
-        id: Changelog
-        env:
-          REPO: ${{ github.repository }}
-
-      - name: Create GitHub Release
-        if: always() #Execute even the generation of changelog has failed
-        id: create_release
-        uses: actions/create-release@latest
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          body: |
-            ${{ steps.Changelog.outputs.changelog }}
-          draft: false
-          prerelease: false
-
-  build_demo_apk_and_announce:
+  github_release:
+    if: |
+      contains(github.event.head_commit.message, 'Automatic release')
     runs-on: ubuntu-latest
-    needs: internal_release
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout GIT
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for all branches and tags
+
+      - name: Verify Commit Author
+        id: verify_author
+        run: |
+          AUTHOR=$(git log -1 --pretty=format:'%an')
+          if [ "$AUTHOR" != "github-actions[bot]" ]; then
+            echo "Commit not authored by github-actions[bot], exiting."
+            exit 1
+          fi
 
       - name: Setup Java SDK
         uses: actions/setup-java@v4
         with:
           distribution: 'adopt'
           java-version: '18'
-
-      - name: Make Gradle Wrapper (gradlew) executable
-        run: chmod +x gradlew
 
       - name: Enable Gradle Wrapper caching (optimization)
         uses: actions/cache@v4
@@ -148,6 +116,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      - name: Get version name and code from libs.versions.toml
+        id: get_version
+        run: |
+          VERSION_NAME=$(grep 'version-name =' gradle/libs.versions.toml | awk -F'=' '{print $2}' | tr -d ' "')
+          VERSION_CODE=$(grep 'version-code =' gradle/libs.versions.toml | awk -F'=' '{print $2}' | tr -d ' "')
+          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
+
+      - name: Create and push tag
+        run: |
+          TAG_NAME="v${{ env.VERSION_NAME }}-${{ env.VERSION_CODE }}"
+          git tag $TAG_NAME
+          git push origin $TAG_NAME
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+
       - name: Build Demo APK
         run: ./gradlew assembleDemo
 
@@ -157,22 +140,42 @@ jobs:
           name: Ivy-Wallet-Demo.apk
           path: app/build/outputs/apk/demo/app-demo.apk
 
-      - name: Upload Demo APK to GitHub Release
-        uses: actions/upload-release-asset@v1
+      - name: Prepare changelog for GitHub Release
+        id: changelog
+        continue-on-error: true
+        uses: Bullrich/generate-release-changelog@master
+        env:
+          REPO: ${{ github.repository }}
+
+      - name: Create GitHub Release
+        id: create_github_release
+        uses: actions/create-release@v1.1.4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.internal_release.outputs.upload_url }}
+          tag_name: ${{ env.TAG_NAME }}
+          release_name: Release ${{ env.TAG_NAME }}
+          body: |
+            ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+
+      - name: Upload APK to GitHub Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_github_release.outputs.upload_url }}
           asset_path: app/build/outputs/apk/demo/app-demo.apk
-          asset_name: Ivy-Wallet-Demo.apk
+          asset_name: Ivy-Wallet-${{ env.TAG_NAME }}.apk
           asset_content_type: application/vnd.android.package-archive
 
       - name: Announce in Telegram group
-        if: |
-          github.ref == 'refs/heads/main'
         run: |
-          COMMIT_LINK="https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
-          RELEASE_TAG=$(echo ${GITHUB_REF} | sed 's/refs\/tags\///')
-          CAPTION=$'🔥 Ivy Wallet '"$RELEASE_TAG"$' release from commit at: '"$COMMIT_LINK"
-          
+          RELEASE_TAG=${{ env.TAG_NAME }}
+          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+          CAPTION=$'🚀 Ivy Wallet '"$RELEASE_TAG"$' release\n\nCheck it out here: '"$RELEASE_URL"'    🚢 Please, test the release candidate before we ship it.'
+
           curl -F "chat_id=-1001647280565" \
                -F "document=@app/build/outputs/apk/demo/app-demo.apk" \
                -F "reply_to_message_id=16118" \

@@ -8,6 +8,7 @@ plugins {
     id("com.google.devtools.ksp")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
+    id("io.gitlab.arturbosch.detekt")
 }
 
 android {
@@ -88,7 +89,7 @@ android {
             signingConfig = signingConfigs.getByName("debug")
 
             applicationIdSuffix = ".debug"
-            resValue("string", "app_name", "Ivy Wallet Demo")
+            resValue("string", "app_name", "Ivy Wallet")
         }
     }
 
@@ -147,6 +148,7 @@ dependencies {
     implementation(projects.shared.data.core)
     implementation(projects.shared.domain)
     implementation(projects.shared.ui.navigation)
+    implementation(projects.shared.ui.core)
     implementation(projects.temp.legacyCode)
     implementation(projects.temp.oldDesign)
     implementation(projects.widget.addTransaction)

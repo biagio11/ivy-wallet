@@ -92,7 +92,7 @@ Make sure to check out our short **[Developer Guidelines 🏗️](docs/Guideline
 - [Gradle KTS](https://docs.gradle.org/current/userguide/kotlin_dsl.html) (Kotlin DSL)
 - [Gradle convention plugins](https://docs.gradle.org/current/samples/sample_convention_plugins.html) (build logic)
 - [Gradle version catalogs](https://developer.android.com/build/migrate-to-catalogs) (dependencies versions)
-- [Github Actions](https://github.com/Ivy-Apps/ivy-wallet/actions) (CI/CD)
+- [GitHub Actions](https://github.com/Ivy-Apps/ivy-wallet/actions) (CI/CD)
 - [Fastlane](https://fastlane.tools/) (uploads the app to the Google Play Store)
 
 ### Other
@@ -133,9 +133,9 @@ Folks that helped Ivy Wallet in a non-dev creative ways that can't be captured o
 </div> -->
 
 <div style="text-align: center">
-    <img src="https://media.licdn.com/dms/image/D4D03AQGiFQMobe7CmA/profile-displayphoto-shrink_800_800/0/1690718245199?e=1713398400&v=beta&t=HyB9vgPe8lIARkgJCYr3C8gFSpGDFGMdDlMIUnunHAY" width="100px;" alt="Stefan Ilijev - Desinger"/><br>
+    <img src="https://avatars.githubusercontent.com/u/62771583?v=4" width="100px;" alt="Stefan Ilijev - Desinger"/><br>
     <strong>Stefan Ilijev</strong><br>
-    <small>Co-founder and designer of Ivy Wallet. Created the <a href="https://www.figma.com/file/kSwIa07jcHEHZXo6rzx7dn/Design-System?node-id=0%3A1&mode=dev">Ivy design scheme.</a></small>
+    <small>Co-founder and designer of Ivy Wallet. Created the <a href="https://www.figma.com/file/kSwIa07jcHEHZXo6rzx7dn/Design-System?node-id=0%3A1&mode=dev">Ivy design system</a>.</small>
     <br/>
     <br/>
 </div>
